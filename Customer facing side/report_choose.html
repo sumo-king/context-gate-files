@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Report an incident{% endblock %}
+
+{# Context from app/web/report.py:
+     categories – {key: {label, blurb, ...}}
+     error      – True when a submission arrived without a valid category #}
+
+{% block content %}
+  <h1>Report an incident</h1>
+  <p class="lead">What kind of problem is it? Pick the closest match; if it's in the wrong place, the engineers will re-route it.</p>
+
+  {% if error %}
+    <div class="error-summary" role="alert">
+      <strong>Please choose what kind of problem you're reporting.</strong>
+    </div>
+  {% endif %}
+
+  <ul class="choice-list">
+    {% for key, item in categories.items() %}
+      <li>
+        <a class="choice" href="/report?category={{ key }}">
+          <span class="choice-title">{{ item.label }}</span>
+          <span class="choice-blurb">{{ item.blurb }}</span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% endblock %}

@@ -1,0 +1,53 @@
+:root {
+  --text: #1a1a1a;
+  --muted: #5c5f66;
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --border: #d4d6db;
+  --accent: #0b5cad;
+  --error: #b42318;
+  --error-bg: #fef3f2;
+  --success-bg: #ecfdf3;
+  --success-border: #6ce9a6;
+}
+
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
+
+.site-header { display: flex; justify-content: space-between; align-items: center;
+  padding: 0.75rem 1rem; background: var(--surface); border-bottom: 1px solid var(--border); }
+.site-header a { color: var(--text); text-decoration: none; }
+.brand { font-weight: 600; }
+
+main { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+.lead { color: var(--muted); }
+
+form { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; }
+.field { margin-bottom: 1.25rem; border: 0; padding: 0; }
+label, legend { display: block; font-weight: 600; margin-bottom: 0.35rem; }
+label.inline { display: inline-flex; gap: 0.35rem; font-weight: 400; margin-right: 1.25rem; }
+input[type=text], input[type=datetime-local], select, textarea {
+  width: 100%; padding: 0.55rem 0.65rem; font: inherit;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.req { color: var(--error); }
+.has-error input, .has-error select, .has-error textarea { border-color: var(--error); }
+.error { color: var(--error); margin: 0.3rem 0 0; font-size: 0.9rem; }
+.error-summary { background: var(--error-bg); border: 1px solid var(--error); border-radius: 6px;
+  padding: 0.75rem 1rem; margin-bottom: 1rem; }
+.error-summary p { margin: 0.35rem 0 0; }
+
+.button { display: inline-block; background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+  padding: 0.6rem 1.2rem; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; }
+
+.success { background: var(--success-bg); border: 1px solid var(--success-border); border-radius: 8px; padding: 1.25rem 1.5rem; }
+.success h1 { margin-top: 0; }
+.ref { font-size: 1.2rem; letter-spacing: 0.03em; }
+
+.choice-list { list-style: none; margin: 1.5rem 0 0; padding: 0; display: grid; gap: 0.75rem; }
+.choice { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 1rem 1.25rem; color: var(--text); text-decoration: none; }
+.choice:hover, .choice:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px var(--accent); }
+.choice-title { display: block; font-weight: 600; }
+.choice-blurb { display: block; color: var(--muted); font-size: 0.95rem; }

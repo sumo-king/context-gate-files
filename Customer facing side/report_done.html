@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}Incident {{ incident.number }} submitted{% endblock %}
+
+{% block content %}
+  <div class="success">
+    <h1>Incident submitted</h1>
+    <p>Your reference number is <strong class="ref">{{ incident.number }}</strong>.</p>
+    <p>We're checking <strong>{{ incident.affected_ci }}</strong> now. You'll get an email when there's an update,
+       and another when it's resolved, asking you to confirm the fix.</p>
+  </div>
+  <p><a href="/report">Report another incident</a></p>
+{% endblock %}

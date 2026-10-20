@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Report a {{ category.noun }} incident{% endblock %}
+
+{#
+  Context from app/web/report.py:
+    category_key – "windows" | "linux" | "virtual_machine" | "storage"
+    category     – wording for this category (noun, ci_label, ci_placeholder)
+    values       – what the customer typed (only "category" on first load)
+    errors       – {field_name: message}; "__form__" holds cross-field errors
+    choices      – dropdown options; "symptom" only has this category's symptoms
+#}
+
+{# One reusable dropdown so every select behaves the same way #}
+{% macro select(name, label) %}
+  <div class="field {% if errors[name] %}has-error{% endif %}">
+    <label for="{{ name }}">{{ label }} <span class="req">*</span></label>
+    <select id="{{ name }}" name="{{ name }}"
+            {% if errors[name] %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
+      <option value="">Choose…</option>
+      {% for value, text in choices[name].items() %}
+        <option value="{{ value }}" {% if values[name] == value %}selected{% endif %}>{{ text }}</option>
+      {% endfor %}
+    </select>
+    {% if errors[name] %}<p class="error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif %}
+  </div>
+{% endmacro %}
+
+{% block content %}
+  <h1>Report a {{ category.noun }} incident</h1>
+  <p class="lead">
+    Fields marked <span class="req">*</span> are required. The more you tell us now, the sooner we can fix it.
+    <a href="/report">Wrong kind of problem?</a>
+  </p>
+
+  {% if errors %}
+    <div class="error-summary" role="alert">
+      <strong>Please fix the highlighted fields.</strong>
+      {% if errors["__form__"] %}<p>{{ errors["__form__"] }}</p>{% endif %}
+    </div>
+  {% endif %}
+
+  {# novalidate: let the server do all validation so rules live in one place #}
+  <form method="post" action="/report" novalidate>
+    <input type="hidden" name="category" value="{{ category_key }}">
+
+    <div class="field {% if errors.affected_ci %}has-error{% endif %}">
+      <label for="affected_ci">{{ category.ci_label }} <span class="req">*</span></label>
+      <input id="affected_ci" name="affected_ci" type="text"
+             value="{{ values.affected_ci or '' }}" placeholder="{{ category.ci_placeholder }}"
+             {% if errors.affected_ci %}aria-invalid="true" aria-describedby="affected_ci-error"{% endif %}>
+      {% if errors.affected_ci %}<p class="error" id="affected_ci-error">{{ errors.affected_ci }}</p>{% endif %}
+    </div>
+
+    {{ select("environment", "Environment") }}
+    {{ select("symptom", "What's the problem?") }}
+
+    <div class="field {% if errors.started_at %}has-error{% endif %}">
+      <label for="started_at">When did it start? <span class="req">*</span></label>
+      <input id="started_at" name="started_at" type="datetime-local"
+             value="{{ values.started_at or '' }}"
+             {% if errors.started_at %}aria-invalid="true" aria-describedby="started_at-error"{% endif %}>
+      {% if errors.started_at %}<p class="error" id="started_at-error">{{ errors.started_at }}</p>{% endif %}
+    </div>
+
+    <fieldset class="field {% if errors.recent_changes %}has-error{% endif %}">
+      <legend>Has anything changed recently? <span class="req">*</span></legend>
+      <label class="inline"><input type="radio" name="recent_changes" value="yes"
+             {% if values.recent_changes == "yes" %}checked{% endif %}> Yes</label>
+      <label class="inline"><input type="radio" name="recent_changes" value="no"
+             {% if values.recent_changes == "no" %}checked{% endif %}> No</label>
+      {% if errors.recent_changes %}<p class="error">{{ errors.recent_changes }}</p>{% endif %}
+    </fieldset>
+
+    <div class="field {% if errors.change_details %}has-error{% endif %}">
+      <label for="change_details">If yes, what changed?</label>
+      <textarea id="change_details" name="change_details" rows="2"
+                placeholder="e.g. OS patching last night, firewall rule change">{{ values.change_details or '' }}</textarea>
+      {% if errors.change_details %}<p class="error">{{ errors.change_details }}</p>{% endif %}
+    </div>
+
+    {{ select("business_impact", "Business impact") }}
+
+    <div class="field {% if errors.description %}has-error{% endif %}">
+      <label for="description">Describe the problem <span class="req">*</span></label>
+      <textarea id="description" name="description" rows="5"
+                placeholder="What do you see? Error messages, who is affected, what you've tried."
+                {% if errors.description %}aria-invalid="true" aria-describedby="description-error"{% endif %}>{{ values.description or '' }}</textarea>
+      {% if errors.description %}<p class="error" id="description-error">{{ errors.description }}</p>{% endif %}
+    </div>
+
+    <button type="submit" class="button">Submit incident</button>
+  </form>
+{% endblock %}
