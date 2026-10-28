@@ -1,0 +1,141 @@
+"""
+EC2 inventory sync with a "time check" gate.
+
+- needs_sync()     -> time check: has it been too long since the last successful sync?
+- sync_instances() -> instance check: describe_instances -> upsert into Postgres,
+                      gated by needs_sync() unless force=True.
+
+Schema (run once / put in your migrations):
+
+    CREATE TABLE IF NOT EXISTS sync_state (
+        job       TEXT PRIMARY KEY,
+        last_run  TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ec2_instances (
+        instance_id    TEXT PRIMARY KEY,
+        region         TEXT NOT NULL,
+        state          TEXT NOT NULL,
+        instance_type  TEXT,
+        launch_time    TIMESTAMPTZ,
+        private_ip     TEXT,
+        tags           JSONB NOT NULL DEFAULT '{}',
+        last_seen      TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+"""
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+
+import boto3
+import psycopg
+from psycopg.types.json import Jsonb
+
+log = logging.getLogger(__name__)
+
+SYNC_JOB = "ec2_inventory"
+# CloudTrail event history only goes back 90 days, so leave a buffer
+MAX_AGE = timedelta(days=80)
+LOCK_KEY = 874201  # any constant int; stops multiple workers syncing at once
+
+UPSERT_SQL = """
+INSERT INTO ec2_instances
+    (instance_id, region, state, instance_type, launch_time, private_ip, tags, last_seen)
+VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+ON CONFLICT (instance_id) DO UPDATE SET
+    state         = EXCLUDED.state,
+    instance_type = EXCLUDED.instance_type,
+    private_ip    = EXCLUDED.private_ip,
+    tags          = EXCLUDED.tags,
+    last_seen     = now()
+"""
+
+
+# ---------- time check ----------
+
+def needs_sync(conn: psycopg.Connection, job: str = SYNC_JOB, max_age: timedelta = MAX_AGE) -> bool:
+    row = conn.execute("SELECT last_run FROM sync_state WHERE job = %s", (job,)).fetchone()
+    if row is None:
+        return True  # never run before
+    return datetime.now(timezone.utc) - row[0] > max_age
+
+
+def mark_synced(conn: psycopg.Connection, job: str = SYNC_JOB) -> None:
+    conn.execute(
+        """INSERT INTO sync_state (job, last_run) VALUES (%s, now())
+           ON CONFLICT (job) DO UPDATE SET last_run = EXCLUDED.last_run""",
+        (job,),
+    )
+
+
+# ---------- instance check ----------
+
+def sync_instances(conn: psycopg.Connection, regions: list[str], force: bool = False) -> int:
+    """Returns number of instances synced (0 if skipped)."""
+    if not force and not needs_sync(conn):
+        log.info("EC2 sync skipped: last run within %s", MAX_AGE)
+        return 0
+
+    synced = 0
+    with conn.transaction():
+        # Only one worker does the sync; others skip instead of duplicating work
+        got_lock = conn.execute("SELECT pg_try_advisory_xact_lock(%s)", (LOCK_KEY,)).fetchone()[0]
+        if not got_lock:
+            log.info("EC2 sync already running elsewhere, skipping")
+            return 0
+
+        for region in regions:
+            ec2 = boto3.client("ec2", region_name=region)
+            seen: list[str] = []
+            for page in ec2.get_paginator("describe_instances").paginate():
+                for res in page["Reservations"]:
+                    for inst in res["Instances"]:
+                        tags = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
+                        conn.execute(UPSERT_SQL, (
+                            inst["InstanceId"],
+                            region,
+                            inst["State"]["Name"],
+                            inst.get("InstanceType"),
+                            inst.get("LaunchTime"),
+                            inst.get("PrivateIpAddress"),
+                            Jsonb(tags),
+                        ))
+                        seen.append(inst["InstanceId"])
+
+            # Anything in the table AWS no longer returns has been terminated and aged out
+            conn.execute(
+                """UPDATE ec2_instances SET state = 'gone'
+                   WHERE region = %s AND state <> 'gone' AND NOT (instance_id = ANY(%s))""",
+                (region, seen),
+            )
+            synced += len(seen)
+
+        # Only stamp the time once everything succeeded (same transaction)
+        mark_synced(conn)
+
+    log.info("EC2 sync complete: %d instances", synced)
+    return synced
+
+
+# ---------- FastAPI wiring ----------
+
+DB_DSN = "postgresql://user:pass@host:5432/db"  # pull from env / Secrets Manager
+REGIONS = ["af-south-1"]
+
+
+def _run_startup_sync() -> None:
+    try:
+        with psycopg.connect(DB_DSN) as conn:
+            sync_instances(conn, REGIONS)
+    except Exception:
+        log.exception("Startup EC2 sync failed")  # don't take the app down over it
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # Run in a background thread so app startup isn't blocked by boto3 calls
+    asyncio.create_task(asyncio.to_thread(_run_startup_sync))
+    yield
+
+# app = FastAPI(lifespan=lifespan)
